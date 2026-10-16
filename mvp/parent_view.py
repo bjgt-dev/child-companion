@@ -28,6 +28,19 @@ def _open_readonly(path: str) -> sqlite3.Connection:
     return conn
 
 
+def _needs_init(path: str) -> bool:
+    """检查库是否缺表（无 learning_goals 表视为未初始化）。"""
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        row = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='learning_goals'"
+        ).fetchone()
+        conn.close()
+        return row is None
+    except sqlite3.Error:
+        return True
+
+
 def _fmt_obs(row) -> str:
     lines = [f"      [{row['id']}] {row['observed_at']}  "
              f"{EVIDENCE_TAG.get(row['evidence_kind'], row['evidence_kind'])}  "
@@ -54,9 +67,27 @@ def main() -> int:
                     help=f"数据库路径（默认 {DEFAULT_DB}）")
     args = ap.parse_args()
 
+    is_default = os.path.abspath(args.db) == os.path.abspath(DEFAULT_DB)
     if not os.path.exists(args.db):
-        print(f"数据库不存在：{args.db}", flush=True)
-        return 1
+        if is_default:
+            os.makedirs(os.path.dirname(os.path.abspath(args.db)), exist_ok=True)
+            _init = Store(args.db)
+            _init.init_db()
+            _init.db.close()
+            print(f"已初始化默认数据库：{args.db}", flush=True)
+        else:
+            print(f"数据库不存在：{args.db}", flush=True)
+            print("请先初始化该数据库后再查看", flush=True)
+            return 1
+    elif _needs_init(args.db):
+        if is_default:
+            _init = Store(args.db)
+            _init.init_db()
+            _init.db.close()
+            print(f"默认数据库无表，已初始化：{args.db}", flush=True)
+        else:
+            print(f"数据库无表（空库）：{args.db}，请先初始化后再查看", flush=True)
+            return 1
 
     conn = _open_readonly(args.db)
     store = Store.__new__(Store)          # 绕过 __init__，复用只读连接
