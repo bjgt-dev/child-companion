@@ -34,6 +34,26 @@ STRATEGY_DESC = {
     "wrapup":        "总结本次发现；允许结束，不为活跃度硬拖时长",
 }
 
+# ---- V3.0 策略版本化 ----
+POLICY_VERSION = "v1.0"  # 当前生效版本，对应 education_policy_versions 表
+_POLICY_LOG = []  # 每次 decide() 记录 (strategy, policy_version)
+
+# 证据等级（V3.0）：A 可进核心 / B 候选 / C 仅实验 / D 不进核心
+EVIDENCE_GRADES = {"A": "核心策略", "B": "候选", "C": "仅实验", "D": "不进核心"}
+STRATEGY_GRADES = {s: "A" for s in STRATEGIES}  # v1.0 基线：11 种策略均为 A 级
+
+
+def set_policy_version(v: str):
+    """切换策略版本。"""
+    global POLICY_VERSION
+    POLICY_VERSION = v
+
+
+def get_policy_log() -> list:
+    """返回本次运行的策略决策日志（含版本号）。"""
+    return list(_POLICY_LOG)
+
+
 # ---- 4.3 掌握状态机 ----
 MASTERY = ["uncontacted", "exploring", "learning", "partial", "mastered", "recheck"]
 MASTERY_CN = {
@@ -126,3 +146,17 @@ def next_mastery(current, signal, transfer_ok_count=0):
     if signal in ("refuse", "wants_stop", "asr_error", "dont_know"):
         return current  # 不因非知识信号降状态
     return MASTERY[order]
+
+
+# ---- V3.0：decide() 版本包装 ----
+_decide_orig = decide
+
+
+def decide(signal, *, wrong_streak=0):  # noqa: F811
+    """包装原 decide()，附加 policy_version 并记日志。"""
+    r = _decide_orig(signal, wrong_streak=wrong_streak)
+    r = dict(r)
+    r["policy_version"] = POLICY_VERSION
+    _POLICY_LOG.append({"signal": signal, "strategy": r["strategy"],
+                        "policy_version": POLICY_VERSION})
+    return r
