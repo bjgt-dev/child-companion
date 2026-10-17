@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>小蛋糕 - 语音测试</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         margin: 0; padding: 20px; background: #fff7f0; color: #333; }
+  h1 { text-align: center; font-size: 22px; margin: 10px 0 4px; }
+  .sub { text-align: center; color: #999; font-size: 13px; margin-bottom: 20px; }
+  #recBtn {
+    display: block; width: 160px; height: 160px; margin: 20px auto;
+    border-radius: 50%; border: none; font-size: 20px; color: #fff;
+    background: #ff8c42; box-shadow: 0 6px 20px rgba(255,140,66,.4);
+    cursor: pointer; user-select: none; touch-action: none;
+  }
+  #recBtn.recording { background: #e74c3c; animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { transform: scale(1.06); } }
+  #hint { text-align: center; color: #666; font-size: 14px; min-height: 20px; }
+  .card { background: #fff; border-radius: 12px; padding: 14px; margin: 12px 0;
+          box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .card .label { font-size: 12px; color: #999; margin-bottom: 6px; }
+  .card .text { font-size: 17px; line-height: 1.6; }
+  #timings { font-size: 13px; color: #666; line-height: 1.8; }
+  #timings b { color: #ff8c42; }
+  .err { color: #e74c3c; text-align: center; padding: 10px; }
+  #status { text-align:center; font-size:12px; color:#aaa; margin-top: 16px;}
+</style>
+</head>
+<body>
+<h1>🧁 小蛋糕</h1>
+<div class="sub">真实链路测试版 · 按住说话</div>
+
+<button id="recBtn">按住<br>说话</button>
+<div id="hint">按住按钮开始录音，松开自动识别</div>
+
+<div class="card" id="cardIn" style="display:none">
+  <div class="label">👧 你说（我们自己的 ASR 识别）</div>
+  <div class="text" id="textIn"></div>
+</div>
+
+<div class="card" id="cardOut" style="display:none">
+  <div class="label">🧁 小蛋糕说 <span id="strategy"></span></div>
+  <div class="text" id="textOut"></div>
+</div>
+
+<div class="card" id="cardTime" style="display:none">
+  <div class="label">⏱ 各环节耗时</div>
+  <div id="timings"></div>
+</div>
+
+<div class="err" id="err"></div>
+<div id="status"></div>
+
+<script>
+const recBtn = document.getElementById('recBtn');
+const hint = document.getElementById('hint');
+const errBox = document.getElementById('err');
+let mediaRecorder = null;
+let chunks = [];
+let stream = null;
+
+async function ensureMic() {
+  if (stream) return stream;
+  stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  return stream;
+}
+
+function startRec(e) {
+  e.preventDefault();
+  errBox.textContent = '';
+  ensureMic().then(s => {
+    chunks = [];
+    const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+    mediaRecorder = new MediaRecorder(s, mime ? {mimeType: mime} : undefined);
+    mediaRecorder.ondataavailable = ev => { if (ev.data.size) chunks.push(ev.data); };
+    mediaRecorder.onstop = upload;
+    mediaRecorder.start();
+    recBtn.classList.add('recording');
+    recBtn.innerHTML = '松开<br>发送';
+    hint.textContent = '正在录音…松开结束';
+  }).catch(err => {
+    errBox.textContent = '麦克风不可用：' + err.message;
+  });
+}
+
+function stopRec(e) {
+  e.preventDefault();
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+    recBtn.classList.remove('recording');
+    recBtn.innerHTML = '按住<br>说话';
+    hint.textContent = '识别中…';
+  }
+}
+
+async function upload() {
+  const blob = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+  if (blob.size < 1000) { hint.textContent = '录音太短，再试一次'; return; }
+  const fd = new FormData();
+  fd.append('audio', blob, 'rec.webm');
+  try {
+    const t0 = performance.now();
+    const r = await fetch('/api/talk', { method: 'POST', body: fd });
+    const net = ((performance.now() - t0) / 1000).toFixed(2);
+    const d = await r.json();
+    if (!d.ok) {
+      errBox.textContent = '出错：' + (d.error || '未知');
+      hint.textContent = '按住按钮开始录音';
+      return;
+    }
+    document.getElementById('cardIn').style.display = 'block';
+    document.getElementById('textIn').textContent = d.text_in || '(没听清)';
+    document.getElementById('cardOut').style.display = 'block';
+    document.getElementById('textOut').textContent = d.text_out;
+    document.getElementById('strategy').textContent = d.strategy ? '· 策略:' + d.strategy : '';
+    document.getElementById('cardTime').style.display = 'block';
+    const t = d.timings;
+    document.getElementById('timings').innerHTML =
+      `转码 <b>${t.convert}s</b> · ASR <b>${t.asr}s</b> · 策略 <b>${t.strategy}s</b><br>` +
+      `LLM <b>${t.llm}s</b> · TTS <b>${t.tts}s</b> · 服务端合计 <b>${t.total}s</b><br>` +
+      `网络往返 ${net}s`;
+    hint.textContent = '按住按钮继续说话';
+    // 自动播放回复
+    const audio = new Audio(d.audio_url);
+    audio.play().catch(() => { hint.textContent = '点击页面后可自动播放'; });
+    document.getElementById('status').textContent = '上次对话 ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    errBox.textContent = '网络错误：' + e.message;
+    hint.textContent = '按住按钮开始录音';
+  }
+}
+
+recBtn.addEventListener('touchstart', startRec, {passive: false});
+recBtn.addEventListener('touchend', stopRec, {passive: false});
+recBtn.addEventListener('mousedown', startRec);
+recBtn.addEventListener('mouseup', stopRec);
+recBtn.addEventListener('mouseleave', e => {
+  if (recBtn.classList.contains('recording')) stopRec(e);
+});
+
+// 健康检查
+fetch('/api/health').then(r => r.json()).then(d => {
+  if (d.ok) document.getElementById('status').textContent = '服务正常 · ' + location.host;
+}).catch(() => {
+  errBox.textContent = '连不上后端服务';
+});
+</script>
+</body>
+</html>
