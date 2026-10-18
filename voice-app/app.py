@@ -23,7 +23,9 @@ APP_DIR = "/home/ubuntu/child-companion/voice-app"
 AUDIO_DIR = os.path.join(APP_DIR, "audio")
 SONG_DIR = "/data/child-audio"  # 点歌音频库（只读）
 SONG_KEYWORDS = ("唱歌", "儿歌", "放首歌", "来首歌", "唱一首", "放一首",
-                 "放歌", "听歌", "英文歌", "中文歌", "再放一首", "还要听")
+                 "放歌", "听歌", "英文歌", "中文歌", "再放一首", "还要听",
+                 "播放", "音乐", "来一首", "唱首", "放音乐", "听音乐")
+STORY_KEYWORDS = ("讲故事", "听故事", "卡梅拉", "来个故事", "再讲一个")
 MODEL_DIR = "/data/p0a/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30"
 
 sys.path.insert(0, MVP_DIR)
@@ -159,28 +161,34 @@ def talk():
             return jsonify({"ok": False, "error": "asr_empty",
                             "timings": timings}), 200
 
-        # 2.5 点歌意图：命中则直接放缓存真唱音频，跳过 LLM/TTS（又快又对）
+        # 2.5 点歌/听故事意图：命中则直接放缓存音频，跳过 LLM/TTS（又快又对）
+        _intent = None
         if any(k in text_in for k in SONG_KEYWORDS):
+            _intent = ("english", "play_song", "点歌意图命中，播放缓存儿歌",
+                       "好呀，小蛋糕给你放一首英文儿歌，跟着一起唱吧！")
+        elif any(k in text_in for k in STORY_KEYWORDS):
+            _intent = ("kameila", "play_story", "听故事意图命中，播放卡梅拉",
+                       "好呀，小蛋糕给你讲卡梅拉的故事，坐好啦！")
+        if _intent:
+            _subdir, _strategy, _reason, _say = _intent
             try:
                 candidates = sorted(
-                    f for f in os.listdir(os.path.join(SONG_DIR, "english"))
+                    f for f in os.listdir(os.path.join(SONG_DIR, _subdir))
                     if f.endswith(".mp3"))
             except OSError:
                 candidates = []
             if candidates:
                 song = random.choice(candidates)
-                nice = song.replace(".mp3", "").replace("_", " ")
-                text_out = "好呀，小蛋糕给你放一首英文儿歌，跟着一起唱吧！"
-                timings["song"] = song
+                timings["media"] = song
                 timings["total"] = round(sum(
                     v for v in timings.values() if isinstance(v, (int, float))), 2)
                 return jsonify({
                     "ok": True,
                     "text_in": text_in,
-                    "strategy": "play_song",
-                    "strategy_reason": "点歌意图命中，播放缓存音频",
-                    "text_out": text_out,
-                    "audio_url": "/songs/english/" + song,
+                    "strategy": _strategy,
+                    "strategy_reason": _reason,
+                    "text_out": _say,
+                    "audio_url": "/songs/" + _subdir + "/" + song,
                     "timings": timings,
                 })
             text_in = text_in + "（音频库暂无缓存，请用语言回应）"
