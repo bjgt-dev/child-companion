@@ -10,6 +10,7 @@ import os
 import sys
 import time
 import uuid
+import random
 import wave
 import subprocess
 import asyncio
@@ -20,6 +21,9 @@ from flask import Flask, request, jsonify, send_from_directory
 MVP_DIR = "/home/ubuntu/child-companion/mvp"
 APP_DIR = "/home/ubuntu/child-companion/voice-app"
 AUDIO_DIR = os.path.join(APP_DIR, "audio")
+SONG_DIR = "/data/child-audio"  # 点歌音频库（只读）
+SONG_KEYWORDS = ("唱歌", "儿歌", "放首歌", "来首歌", "唱一首", "放一首",
+                 "放歌", "听歌", "英文歌", "中文歌", "再放一首", "还要听")
 MODEL_DIR = "/data/p0a/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30"
 
 sys.path.insert(0, MVP_DIR)
@@ -119,6 +123,11 @@ def audio(name):
     return send_from_directory(AUDIO_DIR, name)
 
 
+@app.route("/songs/<path:subpath>")
+def songs(subpath):
+    return send_from_directory(SONG_DIR, subpath)
+
+
 @app.route("/api/health")
 def health():
     return jsonify({"ok": True})
@@ -149,6 +158,32 @@ def talk():
         if not text_in:
             return jsonify({"ok": False, "error": "asr_empty",
                             "timings": timings}), 200
+
+        # 2.5 点歌意图：命中则直接放缓存真唱音频，跳过 LLM/TTS（又快又对）
+        if any(k in text_in for k in SONG_KEYWORDS):
+            try:
+                candidates = sorted(
+                    f for f in os.listdir(os.path.join(SONG_DIR, "english"))
+                    if f.endswith(".mp3"))
+            except OSError:
+                candidates = []
+            if candidates:
+                song = random.choice(candidates)
+                nice = song.replace(".mp3", "").replace("_", " ")
+                text_out = "好呀，小蛋糕给你放一首英文儿歌，跟着一起唱吧！"
+                timings["song"] = song
+                timings["total"] = round(sum(
+                    v for v in timings.values() if isinstance(v, (int, float))), 2)
+                return jsonify({
+                    "ok": True,
+                    "text_in": text_in,
+                    "strategy": "play_song",
+                    "strategy_reason": "点歌意图命中，播放缓存音频",
+                    "text_out": text_out,
+                    "audio_url": "/songs/english/" + song,
+                    "timings": timings,
+                })
+            text_in = text_in + "（音频库暂无缓存，请用语言回应）"
 
         # 3. 策略引擎
         t = time.time()
