@@ -100,10 +100,12 @@ def tts_to_mp3(text, out_path):
     asyncio.run(_run())
 
 
+# 孩子昵称走环境变量 CHILD_NAME，默认"小朋友"（绝不在代码里写真实姓名）
+CHILD_NAME = os.environ.get("CHILD_NAME", "小朋友")
+
 SYSTEM_PROMPT = (
     "你是小蛋糕，一个 5 岁孩子的 AI 成长伙伴。"
     "说话简短（1-2 句话）、温暖、适龄，像好朋友一样。"
-    "孩子嗓子有点哑，多关心她。"
 )
 
 
@@ -169,9 +171,9 @@ def talk():
         if text_out is None:
             # LLM 降级：用规则话术，保证孩子永远有回应
             fallback_replies = [
-                '小朋友，小蛋糕听到你啦！你刚才说的话我记住了，我们继续玩吧！',
+                f"{CHILD_NAME}，小蛋糕听到你啦！你刚才说的话我记住了，我们继续玩吧！",
                 '嗯嗯，小蛋糕在听！你说得真好，我们再聊一会儿吧！',
-                '小朋友真棒！小蛋糕最喜欢跟你说话了，你还想聊什么呀？',
+                f"{CHILD_NAME}真棒！小蛋糕最喜欢跟你说话了，你还想聊什么呀？",
             ]
             import random
             text_out = random.choice(fallback_replies)

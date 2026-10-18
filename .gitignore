@@ -1,6 +1,17 @@
 __pycache__/
 *.pyc
-data/*.db
+# 数据库：可能含孩子对话/学习记录，绝不进仓库
+**/*.db
 backups/
 *.bak-*/
 .DS_Store
+# 密钥文件：绝不进仓库，用 *.env.example 做模板
+*.env
+!*.env.example
+# 语音测试产物
+voice-app/audio/
+*.mp3
+*.wav
+# 模型文件（体积大，另行分发）
+*.onnx
+tokens.txt
