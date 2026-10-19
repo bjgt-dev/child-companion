@@ -673,18 +673,20 @@ def talk():
 
         # 4. LLM（3s 熔断：超时/异常直接降级，保证端到端 <4s）
         t = time.time()
-        # 英语时间模式：全程英语回应（简单英语+中文救场）
+        # 英语沉浸：全程简单英语+中文救场（SYSTEM_PROMPT 也切英语，否则中文系统提示会盖掉英文指令）
         if _english_time_active:
-            prompt = (f"The child said: \"{text_in}\". "
-                      f"Respond in SIMPLE English (1-2 short sentences, "
-                      f"use basic words a 5-year-old can understand). "
-                      f"Be warm and encouraging. "
-                      f"If the child seems confused, add a short Chinese hint at the end.")
+            _sys = ("You are Little Cake, an AI friend for a 5-year-old child. "
+                    "Speak SIMPLE English (1-2 short sentences, basic words). "
+                    "Be warm and encouraging like a good friend.")
+            prompt = (f'The child said: "{text_in}". '
+                      f'Respond in SIMPLE English (1-2 short sentences). '
+                      f'If the child seems confused, add a short Chinese hint at the end.')
         else:
+            _sys = SYSTEM_PROMPT
             prompt = f"孩子说：「{text_in}」。用温暖简短的话回应（1-2 句）。"
         text_out = None
         try:
-            fut = _llm_pool.submit(llm_chat, prompt, SYSTEM_PROMPT)
+            fut = _llm_pool.submit(llm_chat, prompt, _sys)
             text_out = fut.result(timeout=LLM_TIMEOUT)
         except Exception as _e:
             timings["llm_breaker"] = True
