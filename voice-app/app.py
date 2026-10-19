@@ -10,6 +10,25 @@ import os
 import sys
 import time
 import uuid
+import json
+
+# 十万个为什么知识库
+WHY_KB = []
+try:
+    with open('/data/child-audio/why_qa.json', 'r', encoding='utf-8') as _f:
+        WHY_KB = json.load(_f)
+except:
+    pass
+
+def find_why_answer(text):
+    """在知识库中查找匹配的为什么问答"""
+    for item in WHY_KB:
+        q = item.get('q', '')
+        # 提取问题的关键词进行匹配
+        q_key = q.replace('为什么', '').replace('？', '').replace('?', '')
+        if q_key and q_key in text:
+            return item.get('a', '')
+    return None
 import random
 import re
 _CN_DIGIT = {'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9}
@@ -537,6 +556,18 @@ def talk():
         _en_praise = ""
         if _has_english:
             _en_praise = random.choice(["Wow, you speak English! ", "Great English! ", "I love your English! "])
+
+        # 2.9 十万个为什么知识库：孩子问"为什么"时优先用标准答案（准确+快速）
+        if "为什么" in text_in or "为啥" in text_in:
+            _why_answer = find_why_answer(text_in)
+            if _why_answer:
+                _f = os.path.join(AUDIO_DIR, rid + "_why.mp3")
+                tts_to_mp3(_why_answer, _f)
+                return jsonify({"ok": True, "text_in": text_in, "text_out": _why_answer,
+                                "audio_url": f"/audio/{rid}_why.mp3",
+                                "strategy": "why_kb",
+                                "strategy_reason": "十万个为什么知识库命中",
+                                "timings": {"asr": timings["asr"]}})
 
         # 3. 策略引擎
         t = time.time()
