@@ -1,53 +1,107 @@
 # 儿童 AI 成长伙伴
 
-一个为 5-6 岁儿童设计的 AI 成长陪伴系统：软件先行，硬件后置。
+为 5-6 岁儿童设计的 AI 语音陪伴系统：英语沉浸式环境，陪孩子开口说英语。
 
 ## 核心理念
 
+- **英语沉浸优先**：默认全英语环境（简单英语+中文救场），像双语幼儿园外教课
 - **描述性成长模型**：记录孩子"能做什么"，拒绝数字评分
-- **证据分级**：L1 直接观察 / L2 间接证据 / L3 合理推测（必须标注）
-- **教育策略版本化**：策略可回滚、可审计
-- **xAPI 形状的学习事件**：Actor-Verb-Object，行业标准
+- **安全第一**：安全词自动转家长，内容白名单制
+
+## 系统架构
+
+```
+浏览器(录音) → Flask voice-app(:18080)
+  → SenseVoice ASR(多语言) → 意图路由 → LLM(glm-4-flash免费)
+  → edge-tts(中英双音色) → 浏览器(播放)
+  → omemo 记忆层(:8100) → new-api → LLM
+```
+
+## 功能模块
+
+| 模块 | 说明 | 状态 |
+|------|------|------|
+| M0 认字乐园 | 指字游戏+绘本认字 | 规划中 |
+| M1 英语过家家 | 全程简单英语+TBLT任务型教学 | ✅ 已上线 |
+| M2 为什么接龙 | 十万个为什么知识库(50条) | ✅ 已上线 |
+| M3 数学小侦探 | 数学启蒙 | 规划中 |
+| M4 自信表达 | 示弱引导+夸过程 | ✅ 已上线 |
+| M5 专注力小游戏 | 6+3分钟节拍 | 规划中 |
+
+## 已上线功能
+
+- **英语沉浸模式**：默认开启，说"中文时间"切换中文
+- **英文单词游戏**：93个儿童高频词，跟读+英文夸奖
+- **英文故事库**：10个 LibriVox 英文儿童故事
+- **英文儿歌库**：30首英文儿歌
+- **中文儿歌库**：24首中文儿歌（archive.org）
+- **卡梅拉故事**：12集《不一样的卡梅拉》第一季
+- **十万个为什么**：50条儿童问答，优先标准答案
+- **安全词保护**：12+7个安全词，命中转家长话术
+- **URL直播**：支持添加网络音频URL直接播放
 
 ## 快速开始
 
 ```bash
-cd mvp
-python3 test_phase0.py  # Phase 0: 成长事件/成长模型/策略版本化
-python3 test_phase1.py  # Phase 1: 技能系统/事件桥接
-python3 test_phase2.py  # Phase 2: 长期记忆/间隔复习
-python3 test_phase3.py  # Phase 3: 学习来源/Numberblocks
-python3 test_phase4.py  # Phase 4: 设备管理/OTA
-python3 test_phase5.py  # Phase 5: 研究管线/家长助手
+cd voice-app
+pip install -r requirements.txt --break-system-packages
+python3 app.py
+# 访问 http://localhost:18080
 ```
 
-## 项目结构
+### 环境变量
 
-```
-mvp/
-├── growth_event.py      # xAPI 形状的学习事件系统
-├── growth_model.py      # 描述性成长模型（代码级禁打分）
-├── strategy_engine.py   # 教育策略引擎（版本化）
-├── skills.py            # 4 大技能系统
-├── event_bridge.py      # 教学闭环事件桥接
-├── fading.py            # 提示撤除机制
-├── memory.py            # 长期记忆与间隔复习
-├── ecosystem.py         # 学习来源生态
-├── device.py            # 设备管理（ESP32 预留）
-├── safety.py            # 儿童安全护栏
-├── advanced.py          # 研究管线/家长助手
-└── test_phase*.py       # 各阶段测试
-docs/
-├── 儿童教育宪章-v2.0.md
-└── Skill体系设计规范-v3.0.md
-```
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| CHILD_NAME | 孩子昵称（绝不写真实姓名） | 小朋友 |
+| VOICE_ZH | 中文音色 | zh-CN-XiaoxiaoNeural |
+| VOICE_EN | 英文音色 | en-US-AriaNeural |
 
-## 技术栈
+## API 接口
 
-- Python 3（无重型依赖）
-- SQLite（开发）/ PostgreSQL（生产）
-- xAPI 形状的学习事件
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| /api/health | GET | 健康检查 |
+| /api/talk | POST | 语音对话（上传音频文件） |
+| /api/add_url | POST | 添加网络音频URL |
+| /api/list_urls | GET | 列出已添加的URL |
+| /songs/\<path\> | GET | 本地音频文件服务 |
+| /stream/\<name\> | GET | 流式播放URL音频 |
 
-## License
+## 意图路由
+
+`talk()` 按优先级处理：
+
+1. 安全词 → 转家长话术
+2. 睡眠/晚安 → 睡眠音乐
+3. 点歌 → 本地缓存/USL流
+4. 故事 → 卡梅拉/英文故事
+5. 为什么 → 知识库优先
+6. 英语时间开关 → 模式切换
+7. 单词游戏 → 跟读互动
+8. 兜底 → LLM自由对话
+
+## 性能指标
+
+- ASR：~0.7s（SenseVoice多语言）
+- LLM：~2.5s（glm-4-flash，经3s熔断）
+- 端到端：~4.5s（目标<4s）
+
+## 安全设计
+
+- 三层护栏：前置关键词过滤 / prompt约束 / 后置审核
+- 安全词：不舒服/头疼/害怕/敲门等 → 固定安抚话术+推送家长
+- 数据：音频7天转Opus，90天自动删，文字长期保留
+- 脱敏：代码中无真实姓名，CHILD_NAME环境变量化
+
+## 硬件规划
+
+ESP32-S3 + 4G模块，详见 `docs/硬件采购方案-20261018.md`
+
+## 版本记录
+
+见 [CHANGELOG.md](CHANGELOG.md)
+
+## 开源协议
 
 MIT

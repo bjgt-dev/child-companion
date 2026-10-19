@@ -1,0 +1,11 @@
+[app] loading ASR model...
+[app] ASR model loaded in 5.7s
+ * Serving Flask app 'app'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:18080
+ * Running on http://10.0.0.190:18080
+Press CTRL+C to quit
+127.0.0.1 - - [19/Oct/2026 17:30:16] "GET /api/health HTTP/1.1" 200 -
+127.0.0.1 - - [19/Oct/2026 17:30:16] "GET /api/voices HTTP/1.1" 200 -

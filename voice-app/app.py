@@ -239,7 +239,7 @@ def tts_to_mp3(text, out_path):
     _en_chars = sum(1 for c in text if c.isascii() and c.isalpha())
     _total_chars = sum(1 for c in text if c.isalpha())
     _is_english = _total_chars > 0 and (_en_chars / _total_chars) > 0.6
-    _voice = "en-US-AriaNeural" if _is_english else "zh-CN-XiaoxiaoNeural"
+    _voice = VOICE_EN if _is_english else VOICE_ZH
     async def _run():
         communicate = edge_tts.Communicate(text, _voice, rate="-20%")
         await communicate.save(out_path)
@@ -248,6 +248,12 @@ def tts_to_mp3(text, out_path):
 
 # 孩子昵称走环境变量 CHILD_NAME，默认"小朋友"（绝不在代码里写真实姓名）
 CHILD_NAME = os.environ.get("CHILD_NAME", "小朋友")
+
+# 音色配置：环境变量可配，API可切换
+# 中文女声候选：zh-CN-XiaoxiaoNeural（默认）/ zh-CN-XiaoyiNeural / zh-CN-YunxiNeural
+# 英文女声候选：en-US-AriaNeural（默认）/ en-US-JennyNeural / en-GB-SoniaNeural
+VOICE_ZH = os.environ.get("VOICE_ZH", "zh-CN-XiaoxiaoNeural")
+VOICE_EN = os.environ.get("VOICE_EN", "en-US-AriaNeural")
 
 SYSTEM_PROMPT = (
     "你是小蛋糕，一个 5 岁孩子的 AI 成长伙伴。"
@@ -286,6 +292,22 @@ def add_url():
         return jsonify({"ok": False, "error": "need name and url"}), 400
     URL_SONGS[name] = url
     return jsonify({"ok": True, "name": name, "count": len(URL_SONGS)})
+
+@app.route("/api/voices", methods=["GET", "POST"])
+def api_voices():
+    """查询/切换音色。POST {"zh": "...", "en": "..."}"""
+    global VOICE_ZH, VOICE_EN
+    if request.method == "POST":
+        data = request.get_json(force=True, silent=True) or {}
+        if data.get("zh"):
+            VOICE_ZH = data["zh"]
+        if data.get("en"):
+            VOICE_EN = data["en"]
+        return jsonify({"ok": True, "zh": VOICE_ZH, "en": VOICE_EN})
+    return jsonify({"ok": True, "zh": VOICE_ZH, "en": VOICE_EN,
+                    "zh_options": ["zh-CN-XiaoxiaoNeural", "zh-CN-XiaoyiNeural", "zh-CN-YunxiNeural"],
+                    "en_options": ["en-US-AriaNeural", "en-US-JennyNeural", "en-GB-SoniaNeural"]})
+
 
 @app.route("/api/list_urls")
 def list_urls():
@@ -671,9 +693,19 @@ def talk():
                                 "strategy_reason": "单词说对了",
                                 "timings": {"asr": timings["asr"]}})
 
-        # 3. 策略引擎
+        # 3. 策略引擎：从孩子说话内容推导信号，不再写死 explore
         t = time.time()
-        decision = strategy_engine.decide("explore")
+        _signal = "explore"
+        _tl = text_in.lower()
+        if any(k in text_in for k in ["不玩了", "不想玩", "停下", "结束", "不聊了"]):
+            _signal = "wants_stop"
+        elif any(k in text_in for k in ["不知道", "不会", "不懂", "不明白"]):
+            _signal = "dont_know"
+        elif any(k in text_in for k in ["为什么", "怎么", "是什么", "干什么"]):
+            _signal = "wants_explanation"
+        elif any(k in text_in for k in ["不要", "不想", "不喜欢"]):
+            _signal = "refuse"
+        decision = strategy_engine.decide(_signal)
         timings["strategy"] = round(time.time() - t, 3)
         strategy = decision["strategy"]
 

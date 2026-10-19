@@ -59,6 +59,10 @@ const recBtn = document.getElementById('recBtn');
 const hint = document.getElementById('hint');
 const errBox = document.getElementById('err');
 let mediaRecorder = null;
+let currentAudio = null; // 正在播放的音频（用于打断）
+let sleepTimer = null; // 睡眠定时
+let userVolume = 1.0; // 用户音量，持久生效
+let currentTrack = null; // {url, kind} 当前曲目（用于书签）
 let chunks = [];
 let stream = null;
 
@@ -71,6 +75,14 @@ async function ensureMic() {
 function startRec(e) {
   e.preventDefault();
   errBox.textContent = '';
+  // 打断：按住说话时停掉正在播放的故事/歌曲
+  if (currentAudio) { try { currentAudio.pause(); } catch(_e) {} currentAudio = null; }
+  if (currentAudio && currentTrack && currentAudio.currentTime > 5 && currentTrack.url.startsWith('/songs/')) {
+    fetch('/api/bookmark', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({url: currentTrack.url, offset_sec: currentAudio.currentTime})});
+  }
+  window._wasInterrupted = !!(currentAudio && !currentAudio.paused);
+  if (sleepTimer) { clearTimeout(sleepTimer); sleepTimer = null; }
   ensureMic().then(s => {
     chunks = [];
     const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
@@ -100,6 +112,7 @@ async function upload() {
   const blob = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
   if (blob.size < 1000) { hint.textContent = '录音太短，再试一次'; return; }
   const fd = new FormData();
+    if (window._wasInterrupted) fd.append('interrupted', '1');
   fd.append('audio', blob, 'rec.webm');
   try {
     const t0 = performance.now();
@@ -124,8 +137,59 @@ async function upload() {
       `网络往返 ${net}s`;
     hint.textContent = '按住按钮继续说话';
     // 自动播放回复
-    const audio = new Audio(d.audio_url);
-    audio.play().catch(() => { hint.textContent = '点击页面后可自动播放'; });
+    // 音量：更新全局 userVolume，新音频都用它
+    if (d.volume_action) {
+      if (d.volume_action === 'up') userVolume = Math.min(1, userVolume + 0.2);
+      else if (d.volume_action === 'down') userVolume = Math.max(0, userVolume - 0.2);
+      else if (d.volume_action === 'max') userVolume = 1;
+      else if (d.volume_action === 'min') userVolume = 0;
+      if (currentAudio) currentAudio.volume = userVolume;
+    }
+    function _playWithVol(url) {
+      const a = new Audio(url);
+      a.volume = userVolume;
+      return a;
+    }
+    function _trackKind(url) { return url.includes('/kameila/') ? 'story' : 'song'; }
+    // 上一首：先播报幕，再播歌曲
+    if (d.announce_url) {
+      const ann = _playWithVol(d.announce_url);
+      currentAudio = ann;
+      ann.onended = () => {
+        currentAudio = _playWithVol(d.audio_url);
+        currentTrack = {url: d.audio_url, kind: _trackKind(d.audio_url)};
+        if (d.resume_offset > 0) {
+          currentAudio.addEventListener('loadedmetadata', () => {
+            currentAudio.currentTime = Math.min(d.resume_offset, currentAudio.duration - 5);
+          }, {once: true});
+        }
+        currentAudio.play().catch(() => { hint.textContent = '点击页面后可自动播放'; });
+      };
+      ann.play().catch(() => { hint.textContent = '点击页面后可自动播放'; });
+    } else {
+      currentAudio = _playWithVol(d.audio_url);
+      currentTrack = {url: d.audio_url, kind: _trackKind(d.audio_url)};
+      if (d.resume_offset > 0) {
+        currentAudio.addEventListener('loadedmetadata', () => {
+          currentAudio.currentTime = Math.min(d.resume_offset, currentAudio.duration - 5);
+        }, {once: true});
+      }
+      currentAudio.play().catch(() => { hint.textContent = '点击页面后可自动播放'; });
+    }
+    if (sleepTimer) { clearTimeout(sleepTimer); sleepTimer = null; }
+    if (d.sleep_minutes > 0) {
+      const ms = d.sleep_minutes * 60000;
+      sleepTimer = setTimeout(() => {
+        if (currentAudio && currentTrack && currentAudio.currentTime > 5 && currentTrack.url.startsWith('/songs/')) {
+          fetch('/api/bookmark', {method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({url: currentTrack.url, offset_sec: currentAudio.currentTime})});
+        }
+        if (currentAudio) { try { currentAudio.pause(); } catch(_e) {} currentAudio = null; }
+        hint.textContent = '时间到啦，晚安！';
+        sleepTimer = null;
+      }, ms);
+      hint.textContent = d.sleep_minutes + '分钟后自动关闭';
+    }
     document.getElementById('status').textContent = '上次对话 ' + new Date().toLocaleTimeString();
   } catch (e) {
     errBox.textContent = '网络错误：' + e.message;
