@@ -234,8 +234,14 @@ def asr_transcribe(wav_path):
 
 
 def tts_to_mp3(text, out_path):
+    # 英文内容用英语母语者音色（沉浸式），中文用晓晓
+    # 判断：英文字符占比超过 60% 就用英文音色
+    _en_chars = sum(1 for c in text if c.isascii() and c.isalpha())
+    _total_chars = sum(1 for c in text if c.isalpha())
+    _is_english = _total_chars > 0 and (_en_chars / _total_chars) > 0.6
+    _voice = "en-US-AriaNeural" if _is_english else "zh-CN-XiaoxiaoNeural"
     async def _run():
-        communicate = edge_tts.Communicate(text, "zh-CN-XiaoxiaoNeural", rate="-20%")
+        communicate = edge_tts.Communicate(text, _voice, rate="-20%")
         await communicate.save(out_path)
     asyncio.run(_run())
 
@@ -675,9 +681,12 @@ def talk():
         t = time.time()
         # 英语沉浸：全程简单英语+中文救场（SYSTEM_PROMPT 也切英语，否则中文系统提示会盖掉英文指令）
         if _english_time_active:
-            _sys = ("You are Little Cake, an AI friend for a 5-year-old child. "
-                    "Speak SIMPLE English (1-2 short sentences, basic words). "
-                    "Be warm and encouraging like a good friend.")
+            _sys = ("You are Little Cake, an AI friend for a 5-year-old Chinese child learning English. "
+                    "RULES: Use ONLY the 500 most basic English words. "
+                    "1-2 very short sentences max. "
+                    "Be warm and encouraging. "
+                    "Example good: 'Great! You are so smart!' "
+                    "Example bad: 'That's a fascinating observation!' (too hard).")
             prompt = (f'The child said: "{text_in}". '
                       f'Respond in SIMPLE English (1-2 short sentences). '
                       f'If the child seems confused, add a short Chinese hint at the end.')
