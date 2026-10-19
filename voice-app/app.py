@@ -276,7 +276,7 @@ def talk():
                 pass
             _f = os.path.join(AUDIO_DIR, rid + "_safety.mp3")
             tts_to_mp3(_t, _f)
-            return jsonify({"text_in": text_in, "text_out": _t,
+            return jsonify({"ok": True, "text_in": text_in, "text_out": _t,
                             "audio_url": f"/audio/{rid}_safety.mp3",
                             "strategy": "safety_alert",
                             "timings": {"asr": timings["asr"]}})
@@ -490,7 +490,7 @@ def talk():
         if _fact_answer:
             _f = os.path.join(AUDIO_DIR, rid + "_fact.mp3")
             tts_to_mp3(_fact_answer, _f)
-            return jsonify({"text_in": text_in, "text_out": _fact_answer,
+            return jsonify({"ok": True, "text_in": text_in, "text_out": _fact_answer,
                             "audio_url": f"/audio/{rid}_fact.mp3",
                             "strategy": "fact_table",
                             "timings": {"asr": timings["asr"]}})
