@@ -20,8 +20,21 @@ try:
 except:
     pass
 
-# 英语时间模式状态（全局）
-_english_time_active = False
+# 英语沉浸：默认开启（项目初衷：创造沉浸式英语环境）
+# 说"中文时间"可切中文，说"英语时间"切回英语
+_english_time_active = True
+
+# 英文单词库
+EN_WORDS = []
+try:
+    with open('/data/child-audio/english_words.json', 'r', encoding='utf-8') as _f:
+        EN_WORDS = json.load(_f)
+except:
+    pass
+
+# 单词游戏状态
+_word_game_active = False
+_word_game_current = None
 
 def find_why_answer(text):
     """在知识库中查找匹配的为什么问答"""
@@ -581,7 +594,7 @@ def talk():
         global _english_time_active
         if any(k in text_in.lower() for k in ENGLISH_TIME_KW):
             _english_time_active = True
-            _msg = "Great! English time! Let's speak English together! 英语时间到啦，我们一起说英语吧！"
+            _msg = "Great! Let's speak English together! 我们一起说英语吧！"
             _f = os.path.join(AUDIO_DIR, rid + "_engtime.mp3")
             tts_to_mp3(_msg, _f)
             return jsonify({"ok": True, "text_in": text_in, "text_out": _msg,
@@ -599,6 +612,58 @@ def talk():
                             "strategy": "english_time_off",
                             "strategy_reason": "关闭英语时间模式",
                             "timings": {"asr": timings["asr"]}})
+
+        # 2.11 英文单词游戏
+        global _word_game_active, _word_game_current
+        _word_game_kw = ("单词游戏", "word game", "背单词", "学单词", "英语游戏")
+        _word_game_off_kw = ("不玩了", "结束游戏", "stop game", "不玩单词")
+        if any(k in text_in.lower() for k in _word_game_kw):
+            _word_game_active = True
+            _word_game_current = random.choice(EN_WORDS) if EN_WORDS else None
+            if _word_game_current:
+                _en = _word_game_current['en']
+                _zh = _word_game_current['zh']
+                _msg = f"Word game! Listen and repeat! {_en}! {_en}! {_zh}用英语说就是 {_en}，跟小蛋糕一起说：{_en}！"
+            else:
+                _msg = "单词库还没准备好，我们先聊别的吧！"
+            _f = os.path.join(AUDIO_DIR, rid + "_word.mp3")
+            tts_to_mp3(_msg, _f)
+            return jsonify({"ok": True, "text_in": text_in, "text_out": _msg,
+                            "audio_url": f"/audio/{rid}_word.mp3",
+                            "strategy": "word_game_start",
+                            "strategy_reason": "开始单词游戏",
+                            "timings": {"asr": timings["asr"]}})
+        if any(k in text_in.lower() for k in _word_game_off_kw) and _word_game_active:
+            _word_game_active = False
+            _word_game_current = None
+            _msg = "Great job! 单词游戏结束啦，你真棒！"
+            _f = os.path.join(AUDIO_DIR, rid + "_word.mp3")
+            tts_to_mp3(_msg, _f)
+            return jsonify({"ok": True, "text_in": text_in, "text_out": _msg,
+                            "audio_url": f"/audio/{rid}_word.mp3",
+                            "strategy": "word_game_end",
+                            "strategy_reason": "结束单词游戏",
+                            "timings": {"asr": timings["asr"]}})
+        # 单词游戏中：检查孩子是否说对了当前单词
+        if _word_game_active and _word_game_current:
+            _en = _word_game_current['en'].lower()
+            _zh = _word_game_current['zh']
+            if _en in text_in.lower():
+                _praise = random.choice(["Excellent! ", "Perfect! ", "Amazing! ", "Wonderful! "])
+                _word_game_current = random.choice(EN_WORDS) if EN_WORDS else None
+                if _word_game_current:
+                    _nen = _word_game_current['en']
+                    _nzh = _word_game_current['zh']
+                    _msg = f"{_praise}你说对了！下一个：{_nen}! {_nen}! {_nzh}用英语是 {_nen}，跟我说：{_nen}！"
+                else:
+                    _msg = f"{_praise}你说对了！"
+                _f = os.path.join(AUDIO_DIR, rid + "_word.mp3")
+                tts_to_mp3(_msg, _f)
+                return jsonify({"ok": True, "text_in": text_in, "text_out": _msg,
+                                "audio_url": f"/audio/{rid}_word.mp3",
+                                "strategy": "word_game_correct",
+                                "strategy_reason": "单词说对了",
+                                "timings": {"asr": timings["asr"]}})
 
         # 3. 策略引擎
         t = time.time()
