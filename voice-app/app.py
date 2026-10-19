@@ -27,12 +27,14 @@ import subprocess
 import asyncio
 import numpy as np
 
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, redirect
 
 MVP_DIR = "/home/ubuntu/child-companion/mvp"
 APP_DIR = "/home/ubuntu/child-companion/voice-app"
 AUDIO_DIR = os.path.join(APP_DIR, "audio")
 SONG_DIR = "/data/child-audio"  # 点歌音频库（只读）
+# URL 直播：用户提供的 MP3 直链，无需下载直接播
+URL_SONGS = {}  # name -> url，可通过 /api/add_url 动态添加
 SONG_KEYWORDS = ("唱歌", "儿歌", "放首歌", "来首歌", "唱一首", "放一首",
                  "放歌", "听歌", "英文歌", "中文歌", "再放一首", "还要听",
                  "播放", "音乐", "来一首", "唱首", "放音乐", "听音乐")
@@ -221,6 +223,28 @@ def audio(name):
 def songs(subpath):
     return send_from_directory(SONG_DIR, subpath)
 
+@app.route("/stream/<name>")
+def stream_url(name):
+    """URL 直播：重定向到用户提供的 MP3 直链"""
+    url = URL_SONGS.get(name)
+    if not url:
+        return jsonify({"ok": False, "error": "url not found"}), 404
+    return redirect(url)
+
+@app.route("/api/add_url", methods=["POST"])
+def add_url():
+    """添加 URL 直播歌曲：{"name": "英文儿歌1", "url": "https://...mp3"}"""
+    d = request.get_json(force=True, silent=True) or {}
+    name, url = d.get("name"), d.get("url")
+    if not name or not url:
+        return jsonify({"ok": False, "error": "need name and url"}), 400
+    URL_SONGS[name] = url
+    return jsonify({"ok": True, "name": name, "count": len(URL_SONGS)})
+
+@app.route("/api/list_urls")
+def list_urls():
+    return jsonify({"ok": True, "urls": list(URL_SONGS.keys())})
+
 
 @app.route("/api/health")
 def health():
@@ -363,7 +387,10 @@ def talk():
         # 故事优先：含故事关键词时不触发点歌（如"播放卡梅拉"）
         _has_story_kw = any(k in text_in for k in STORY_KEYWORDS)
         if any(k in text_in for k in SONG_KEYWORDS) and not _has_story_kw:
-            _intent = ("english", "play_song", "点歌意图命中，播放缓存儿歌", None)
+            # 中文歌关键词 → 中文儿歌库，英文歌/默认 → 英文儿歌库
+            _cn_kw = ("中文歌", "儿歌", "中文儿歌")
+            _subdir = "songs" if any(k in text_in for k in _cn_kw) else "english"
+            _intent = (_subdir, "play_song", "点歌意图命中，播放缓存儿歌", None)
         if _intent:
             _subdir, _strategy, _reason, _say = _intent
             try:
@@ -376,7 +403,8 @@ def talk():
                 song = random.choice(candidates)
                 timings["media"] = song
                 _song_title = _title_from_file(song, "song")
-                _say = f"好呀，英文儿歌《{_song_title}》，开始啦！"
+                _lang = "中文儿歌" if _subdir == "songs" else "英文儿歌"
+                _say = f"好呀，{_lang}《{_song_title}》，开始啦！"
                 PLAY_HISTORY.append({"title": _song_title,
                                      "url": "/songs/" + _subdir + "/" + song,
                                      "kind": "song"})
