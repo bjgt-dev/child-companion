@@ -485,7 +485,9 @@ def talk():
         if any(p in text_in for p in ("英语怎么说", "英文怎么说", "英文是什么", "英语是什么")):
             for _kw, _en in FACT_ANSWERS.items():
                 if _kw in text_in:
-                    _fact_answer = f"{_kw}用英语说就是 {_en}！"
+                    # 英语沉浸：英文先行+中文解释+英文鼓励
+                    _praise = random.choice(["Very good!", "Excellent!", "Wonderful!", "Great job!"])
+                    _fact_answer = f"{_en}! {_kw}用英语说就是 {_en}，{_praise} 你真棒！"
                     break
         if _fact_answer:
             _f = os.path.join(AUDIO_DIR, rid + "_fact.mp3")
@@ -494,6 +496,12 @@ def talk():
                             "audio_url": f"/audio/{rid}_fact.mp3",
                             "strategy": "fact_table",
                             "timings": {"asr": timings["asr"]}})
+
+        # 2.8 英语沉浸检测：孩子说了英文就用英文鼓励强化
+        _has_english = bool(re.search(r"[a-zA-Z]{2,}", text_in))
+        _en_praise = ""
+        if _has_english:
+            _en_praise = random.choice(["Wow, you speak English! ", "Great English! ", "I love your English! "])
 
         # 3. 策略引擎
         t = time.time()
@@ -525,6 +533,10 @@ def talk():
         _interrupted = request.form.get("interrupted") == "1"
         if _interrupted and text_out and not text_out.startswith("好，停下啦"):
             text_out = "好，停下啦，" + text_out
+
+        # 4.8 英语沉浸：孩子说了英文，前加英文鼓励
+        if _en_praise and text_out:
+            text_out = _en_praise + text_out
 
         # 5. TTS
         t = time.time()
