@@ -20,6 +20,9 @@ try:
 except:
     pass
 
+# 英语时间模式状态（全局）
+_english_time_active = False
+
 def find_why_answer(text):
     """在知识库中查找匹配的为什么问答"""
     for item in WHY_KB:
@@ -57,6 +60,11 @@ URL_SONGS = {}  # name -> url，可通过 /api/add_url 动态添加
 SONG_KEYWORDS = ("唱歌", "儿歌", "放首歌", "来首歌", "唱一首", "放一首",
                  "放歌", "听歌", "英文歌", "中文歌", "再放一首", "还要听",
                  "播放", "音乐", "来一首", "唱首", "放音乐", "听音乐")
+# 英语时间模式关键词
+ENGLISH_TIME_KW = ("英语时间", "英文时间", "english time", "说英语", "讲英语",
+                   "english mode", "英语模式")
+ENGLISH_TIME_OFF_KW = ("中文时间", "结束英语", "别说英语了", "说中文",
+                       "chinese time", "中文模式")
 SLEEP_KEYWORDS = ("分钟后关", "分钟后停", "分钟后睡", "定时关", "定时停",
                     "讲完就睡", "听完就睡", "讲完这个就睡")
 
@@ -569,6 +577,29 @@ def talk():
                                 "strategy_reason": "十万个为什么知识库命中",
                                 "timings": {"asr": timings["asr"]}})
 
+        # 2.10 英语时间模式开关
+        global _english_time_active
+        if any(k in text_in.lower() for k in ENGLISH_TIME_KW):
+            _english_time_active = True
+            _msg = "Great! English time! Let's speak English together! 英语时间到啦，我们一起说英语吧！"
+            _f = os.path.join(AUDIO_DIR, rid + "_engtime.mp3")
+            tts_to_mp3(_msg, _f)
+            return jsonify({"ok": True, "text_in": text_in, "text_out": _msg,
+                            "audio_url": f"/audio/{rid}_engtime.mp3",
+                            "strategy": "english_time_on",
+                            "strategy_reason": "开启英语时间模式",
+                            "timings": {"asr": timings["asr"]}})
+        if any(k in text_in.lower() for k in ENGLISH_TIME_OFF_KW):
+            _english_time_active = False
+            _msg = "好的，我们回到中文时间啦！下次还想练英语就跟小蛋糕说'英语时间'哦！"
+            _f = os.path.join(AUDIO_DIR, rid + "_engtime.mp3")
+            tts_to_mp3(_msg, _f)
+            return jsonify({"ok": True, "text_in": text_in, "text_out": _msg,
+                            "audio_url": f"/audio/{rid}_engtime.mp3",
+                            "strategy": "english_time_off",
+                            "strategy_reason": "关闭英语时间模式",
+                            "timings": {"asr": timings["asr"]}})
+
         # 3. 策略引擎
         t = time.time()
         decision = strategy_engine.decide("explore")
@@ -577,7 +608,15 @@ def talk():
 
         # 4. LLM（3s 熔断：超时/异常直接降级，保证端到端 <4s）
         t = time.time()
-        prompt = f"孩子说：「{text_in}」。用温暖简短的话回应（1-2 句）。"
+        # 英语时间模式：全程英语回应（简单英语+中文救场）
+        if _english_time_active:
+            prompt = (f"The child said: \"{text_in}\". "
+                      f"Respond in SIMPLE English (1-2 short sentences, "
+                      f"use basic words a 5-year-old can understand). "
+                      f"Be warm and encouraging. "
+                      f"If the child seems confused, add a short Chinese hint at the end.")
+        else:
+            prompt = f"孩子说：「{text_in}」。用温暖简短的话回应（1-2 句）。"
         text_out = None
         try:
             fut = _llm_pool.submit(llm_chat, prompt, SYSTEM_PROMPT)
