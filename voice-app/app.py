@@ -291,7 +291,7 @@ def talk():
                 _f = os.path.join(AUDIO_DIR, rid + "_prev.mp3")
                 tts_to_mp3(_t, _f)
                 PLAY_HISTORY.append(_prev)
-                return jsonify({"text_in": text_in, "text_out": _t,
+                return jsonify({"ok": True, "text_in": text_in, "text_out": _t,
                                 "audio_url": _prev["url"],
                                 "announce_url": f"/audio/{rid}_prev.mp3",
                                 "strategy": "ctrl_prev",
@@ -299,7 +299,7 @@ def talk():
             _t = "还没有上一首呢，我们先听一首吧！"
             _f = os.path.join(AUDIO_DIR, rid + "_prev.mp3")
             tts_to_mp3(_t, _f)
-            return jsonify({"text_in": text_in, "text_out": _t,
+            return jsonify({"ok": True, "text_in": text_in, "text_out": _t,
                             "audio_url": f"/audio/{rid}_prev.mp3",
                             "strategy": "ctrl_prev_empty",
                             "timings": {"asr": timings["asr"]}})
@@ -311,7 +311,7 @@ def talk():
                 _t = f"好，接着放{_title}，从{_mm}分钟开始！"
                 _f = os.path.join(AUDIO_DIR, rid + "_resume.mp3")
                 tts_to_mp3(_t, _f)
-                return jsonify({"text_in": text_in, "text_out": _t,
+                return jsonify({"ok": True, "text_in": text_in, "text_out": _t,
                                 "audio_url": _url,
                                 "announce_url": f"/audio/{rid}_resume.mp3",
                                 "resume_offset": _off,
@@ -320,7 +320,7 @@ def talk():
             _t = "还没有上次的记录呢，你想听什么？"
             _f = os.path.join(AUDIO_DIR, rid + "_resume.mp3")
             tts_to_mp3(_t, _f)
-            return jsonify({"text_in": text_in, "text_out": _t,
+            return jsonify({"ok": True, "text_in": text_in, "text_out": _t,
                             "audio_url": f"/audio/{rid}_resume.mp3",
                             "strategy": "ctrl_resume_empty",
                             "timings": {"asr": timings["asr"]}})
@@ -333,7 +333,7 @@ def talk():
                 _t = "现在还没有播放呢，你想听什么？"
             _f = os.path.join(AUDIO_DIR, rid + "_now.mp3")
             tts_to_mp3(_t, _f)
-            return jsonify({"text_in": text_in, "text_out": _t,
+            return jsonify({"ok": True, "text_in": text_in, "text_out": _t,
                             "audio_url": f"/audio/{rid}_now.mp3",
                             "strategy": "ctrl_now",
                             "timings": {"asr": timings["asr"]}})
@@ -352,7 +352,7 @@ def talk():
                    "up": "好，声音大一点！", "down": "好，声音小一点！"}[_vol]
             _f = os.path.join(AUDIO_DIR, rid + "_vol.mp3")
             tts_to_mp3(_vt, _f)
-            return jsonify({"text_in": text_in, "text_out": _vt,
+            return jsonify({"ok": True, "text_in": text_in, "text_out": _vt,
                             "audio_url": f"/audio/{rid}_vol.mp3",
                             "strategy": "ctrl_vol", "volume_action": _vol,
                             "timings": {"asr": timings["asr"]}})
@@ -407,7 +407,7 @@ def talk():
                 _t = "好，讲完这个我们就睡觉啦，晚安！"
             _f2 = os.path.join(AUDIO_DIR, rid + "_sleep.mp3")
             tts_to_mp3(_t, _f2)
-            return jsonify({"text_in": text_in, "text_out": _t,
+            return jsonify({"ok": True, "text_in": text_in, "text_out": _t,
                             "audio_url": f"/audio/{rid}_sleep.mp3",
                             "strategy": "sleep_timer", "sleep_minutes": _sleep_min,
                             "timings": {"asr": timings["asr"]}})
