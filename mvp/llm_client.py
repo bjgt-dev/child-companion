@@ -50,7 +50,7 @@ def chat(prompt, system="你是一个 5 岁孩子的 AI 成长伙伴，说话简
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ],
-        "max_tokens": 100,
+        "max_tokens": 1500,
     }).encode()
     req = urllib.request.Request(
         c["base_url"] + "/chat/completions", data=body,
