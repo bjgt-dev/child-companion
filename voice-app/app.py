@@ -191,7 +191,7 @@ from llm_client import chat as llm_chat
 from concurrent.futures import ThreadPoolExecutor as _TPE
 # LLM 熔断线程池（3s 超时，超时线程后台自生自灭，不阻塞）
 _llm_pool = _TPE(max_workers=2, thread_name_prefix="llm")
-LLM_TIMEOUT = 3.0
+LLM_TIMEOUT = 8.0
 import edge_tts
 
 app = Flask(__name__)
@@ -247,6 +247,18 @@ def tts_to_mp3(text, out_path):
 
 
 # 孩子昵称走环境变量 CHILD_NAME，默认"小朋友"（绝不在代码里写真实姓名）
+# 点点读故事融入（2026-11-02）：教练卡 / 日常句型 / 故事 JSON
+DATA_DIR = os.path.join(APP_DIR, "data")
+def _load_json(name, default):
+    try:
+        with open(os.path.join(DATA_DIR, name), encoding="utf-8") as _f:
+            return json.load(_f)
+    except Exception:
+        return default
+COACH_GAMES = _load_json("coach_games.json", {"games": []})["games"]
+DAILY_SCENES = _load_json("daily_sentences.json", {"scenes": []})["scenes"]
+STORIES = _load_json("stories.json", {"stories": []})["stories"]
+
 CHILD_NAME = os.environ.get("CHILD_NAME", "小朋友")
 
 # 音色配置：环境变量可配，API可切换
@@ -312,6 +324,89 @@ def api_voices():
 @app.route("/api/list_urls")
 def list_urls():
     return jsonify({"ok": True, "urls": list(URL_SONGS.keys())})
+
+
+@app.route("/api/coach/games")
+def api_coach_games():
+    return jsonify({"ok": True, "games": [{"id": g["id"], "title": g["title"], "title_cn": g["title_cn"]} for g in COACH_GAMES]})
+
+
+@app.route("/api/coach/game/<gid>")
+def api_coach_game(gid):
+    for g in COACH_GAMES:
+        if g["id"] == gid:
+            return jsonify({"ok": True, "game": g})
+    return jsonify({"ok": False, "error": "game not found"}), 404
+
+
+@app.route("/api/daily")
+def api_daily():
+    return jsonify({"ok": True, "scenes": DAILY_SCENES})
+
+
+@app.route("/api/stories")
+def api_stories():
+    return jsonify({"ok": True, "stories": [{"id": s["id"], "title": s["title"], "level": s["level"]} for s in STORIES]})
+
+
+@app.route("/api/say")
+def api_say():
+    """点按发音：?text=英文句子，返回 MP3（限 500 字内）"""
+    _text = request.args.get("text", "")[:500]
+    if not _text:
+        return jsonify({"ok": False, "error": "empty text"}), 400
+    _f = os.path.join(AUDIO_DIR, "say_" + str(abs(hash(_text)) % 100000000) + ".mp3")
+    if not os.path.exists(_f):
+        tts_to_mp3(_text, _f)
+    return send_from_directory(AUDIO_DIR, os.path.basename(_f))
+
+
+@app.route("/coach")
+def page_coach():
+    _cards = "".join(
+        f'<div style="border:2px solid #ffb300;border-radius:16px;padding:16px;margin:10px;cursor:pointer" onclick="playGame(\'{g["id"]}\')"><h2>{g["title_cn"]} {g["title"]}</h2></div>'
+        for g in COACH_GAMES)
+    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>小教练</title></head>
+<body style="font-family:sans-serif;background:#fff8e1"><h1>🏅 小教练游戏卡</h1><div id="cmds"></div>{_cards}
+<script>
+async function playGame(id) {{
+  const r = await fetch('/api/coach/game/' + id); const j = await r.json(); const g = j.game;
+  let html = '<h2>' + g.title_cn + '</h2>';
+  g.intro.forEach(s => {{ html += '<p>' + s.text + ' <small>' + s.text_cn + '</small></p>'; }});
+  g.commands.forEach(c => {{ html += '<button style="display:block;width:90%;font-size:22px;margin:8px;padding:14px;border-radius:12px" onclick="say(\'' + c.text.replace(/'/g, "\\'") + '\')">' + c.text + '<br><small>' + c.text_cn + '</small></button>'; }});
+  document.getElementById('cmds').innerHTML = html;
+}}
+function say(t) {{ new Audio('/api/say?text=' + encodeURIComponent(t)).play(); }}
+</script></body></html>"""
+
+
+@app.route("/stories")
+def page_stories():
+    _cards = "".join(
+        f'<div style="border:2px solid #4caf50;border-radius:16px;padding:16px;margin:10px;cursor:pointer" onclick="playStory(\'{s["id"]}\')"><h2>{s["title"]}</h2></div>'
+        for s in STORIES)
+    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>英语故事</title></head>
+<body style="font-family:sans-serif;background:#e8f5e9"><h1>📖 英语故事</h1><div id="pages"></div>{_cards}
+<script>
+let pages = [];
+async function playStory(id) {{
+  const r = await fetch('/api/stories'); const j = await r.json();
+  const all = {{"story_morning": null, "story_animals": null}};
+  const res = await fetch('/api/story/' + id); const sj = await res.json(); pages = sj.story.pages;
+  let html = '<h2>' + sj.story.title + '</h2>';
+  pages.forEach((p, i) => {{ html += '<button style="display:block;width:90%;font-size:22px;margin:8px;padding:14px;border-radius:12px" onclick="say(\'' + p.text.replace(/'/g, "\\'") + '\')">' + p.text + '</button>'; }});
+  document.getElementById('pages').innerHTML = html;
+}}
+function say(t) {{ new Audio('/api/say?text=' + encodeURIComponent(t)).play(); }}
+</script></body></html>"""
+
+
+@app.route("/api/story/<sid>")
+def api_story(sid):
+    for s in STORIES:
+        if s["id"] == sid:
+            return jsonify({"ok": True, "story": s})
+    return jsonify({"ok": False, "error": "story not found"}), 404
 
 
 @app.route("/api/health")
@@ -692,6 +787,44 @@ def talk():
                                 "strategy": "word_game_correct",
                                 "strategy_reason": "单词说对了",
                                 "timings": {"asr": timings["asr"]}})
+
+        # 2.12 体适能小教练：说"小教练"/游戏名 → 播报开场 + 前 3 条指令
+        _coach_kw = ("小教练", "玩游戏", "教练游戏", "coach")
+        _hit_game = None
+        for _g in COACH_GAMES:
+            if _g["title_cn"] in text_in or _g["title"].lower() in text_in.lower():
+                _hit_game = _g
+                break
+        if any(k in text_in for k in _coach_kw) or _hit_game:
+            _g = _hit_game or (random.choice(COACH_GAMES) if COACH_GAMES else None)
+            if _g:
+                _intro = " ".join(s["text"] for s in _g["intro"])
+                _cmds = " ".join(c["text"] for c in _g["commands"][:3])
+                _msg = f"Great! {_intro} {_cmds} Let's play! 跟小蛋糕一起喊出来，爸爸妈妈照着做！"
+                _f = os.path.join(AUDIO_DIR, rid + "_coach.mp3")
+                tts_to_mp3(_msg, _f)
+                return jsonify({"ok": True, "text_in": text_in, "text_out": _msg,
+                                "audio_url": f"/audio/{rid}_coach.mp3",
+                                "strategy": "coach_game",
+                                "strategy_reason": f"小教练游戏：{_g['title_cn']}",
+                                "timings": {"asr": timings["asr"]}})
+
+        # 2.13 家庭日常句型：说"起床英语"/"吃饭英语"等 → 播报该场景句型
+        _hit_scene = None
+        for _s in DAILY_SCENES:
+            if any(k in text_in for k in _s["keywords"]):
+                _hit_scene = _s
+                break
+        if _hit_scene:
+            _sens = " ".join(s["en"] for s in _hit_scene["sentences"])
+            _msg = f"Let's learn! {_sens} 跟小蛋糕一起说！"
+            _f = os.path.join(AUDIO_DIR, rid + "_daily.mp3")
+            tts_to_mp3(_msg, _f)
+            return jsonify({"ok": True, "text_in": text_in, "text_out": _msg,
+                            "audio_url": f"/audio/{rid}_daily.mp3",
+                            "strategy": "daily_sentences",
+                            "strategy_reason": f"日常句型：{_hit_scene['title']}",
+                            "timings": {"asr": timings["asr"]}})
 
         # 3. 策略引擎：从孩子说话内容推导信号，不再写死 explore
         t = time.time()

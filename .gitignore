@@ -15,3 +15,8 @@ voice-app/audio/
 # 模型文件（体积大，另行分发）
 *.onnx
 tokens.txt
+
+# 备份与日志：绝不进仓库
+*.bak-*
+server.log
+*.log
