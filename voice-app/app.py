@@ -364,41 +364,43 @@ def api_say():
 @app.route("/coach")
 def page_coach():
     _cards = "".join(
-        f'<div style="border:2px solid #ffb300;border-radius:16px;padding:16px;margin:10px;cursor:pointer" onclick="playGame(\'{g["id"]}\')"><h2>{g["title_cn"]} {g["title"]}</h2></div>'
+        '<div style="border:2px solid #ffb300;border-radius:16px;padding:16px;margin:10px;cursor:pointer" onclick="playGame(\'' + g["id"] + '\')"><h2>' + g["title_cn"] + ' ' + g["title"] + '</h2></div>'
         for g in COACH_GAMES)
-    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>小教练</title></head>
-<body style="font-family:sans-serif;background:#fff8e1"><h1>🏅 小教练游戏卡</h1><div id="cmds"></div>{_cards}
+    _html = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>小教练</title></head>
+<body style="font-family:sans-serif;background:#fff8e1"><h1>🏅 小教练游戏卡</h1><div id="cmds"></div>__CARDS__
 <script>
-async function playGame(id) {{
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+async function playGame(id) {
   const r = await fetch('/api/coach/game/' + id); const j = await r.json(); const g = j.game;
-  let html = '<h2>' + g.title_cn + '</h2>';
-  g.intro.forEach(s => {{ html += '<p>' + s.text + ' <small>' + s.text_cn + '</small></p>'; }});
-  g.commands.forEach(c => {{ html += '<button style="display:block;width:90%;font-size:22px;margin:8px;padding:14px;border-radius:12px" onclick="say(\'' + c.text.replace(/'/g, "\\'") + '\')">' + c.text + '<br><small>' + c.text_cn + '</small></button>'; }});
+  let html = '<h2>' + esc(g.title_cn) + '</h2>';
+  g.intro.forEach(s => { html += '<p>' + esc(s.text) + ' <small>' + esc(s.text_cn) + '</small></p>'; });
+  g.commands.forEach(c => { html += '<button data-t="' + esc(c.text) + '" style="display:block;width:90%;font-size:22px;margin:8px;padding:14px;border-radius:12px" onclick="say(this.dataset.t)">' + esc(c.text) + '<br><small>' + esc(c.text_cn) + '</small></button>'; });
   document.getElementById('cmds').innerHTML = html;
-}}
-function say(t) {{ new Audio('/api/say?text=' + encodeURIComponent(t)).play(); }}
-</script></body></html>"""
+}
+function say(t) { new Audio('/api/say?text=' + encodeURIComponent(t)).play(); }
+</script></body></html>""".replace("__CARDS__", _cards)
+    return _html, 200, {"Cache-Control": "no-store"}
 
 
 @app.route("/stories")
 def page_stories():
     _cards = "".join(
-        f'<div style="border:2px solid #4caf50;border-radius:16px;padding:16px;margin:10px;cursor:pointer" onclick="playStory(\'{s["id"]}\')"><h2>{s["title"]}</h2></div>'
+        '<div style="border:2px solid #4caf50;border-radius:16px;padding:16px;margin:10px;cursor:pointer" onclick="playStory(\'' + s["id"] + '\')"><h2>' + s["title"] + '</h2></div>'
         for s in STORIES)
-    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>英语故事</title></head>
-<body style="font-family:sans-serif;background:#e8f5e9"><h1>📖 英语故事</h1><div id="pages"></div>{_cards}
+    _html = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>英语故事</title></head>
+<body style="font-family:sans-serif;background:#e8f5e9"><h1>📖 英语故事</h1><div id="pages"></div>__CARDS__
 <script>
 let pages = [];
-async function playStory(id) {{
-  const r = await fetch('/api/stories'); const j = await r.json();
-  const all = {{"story_morning": null, "story_animals": null}};
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+async function playStory(id) {
   const res = await fetch('/api/story/' + id); const sj = await res.json(); pages = sj.story.pages;
-  let html = '<h2>' + sj.story.title + '</h2>';
-  pages.forEach((p, i) => {{ html += '<button style="display:block;width:90%;font-size:22px;margin:8px;padding:14px;border-radius:12px" onclick="say(\'' + p.text.replace(/'/g, "\\'") + '\')">' + p.text + '</button>'; }});
+  let html = '<h2>' + esc(sj.story.title) + '</h2>';
+  pages.forEach((p, i) => { html += '<button data-t="' + esc(p.text) + '" style="display:block;width:90%;font-size:22px;margin:8px;padding:14px;border-radius:12px" onclick="say(this.dataset.t)">' + esc(p.text) + '</button>'; });
   document.getElementById('pages').innerHTML = html;
-}}
-function say(t) {{ new Audio('/api/say?text=' + encodeURIComponent(t)).play(); }}
-</script></body></html>"""
+}
+function say(t) { new Audio('/api/say?text=' + encodeURIComponent(t)).play(); }
+</script></body></html>""".replace("__CARDS__", _cards)
+    return _html, 200, {"Cache-Control": "no-store"}
 
 
 @app.route("/api/story/<sid>")
@@ -904,6 +906,25 @@ def talk():
         return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}",
                         "timings": timings}), 500
 
+
+# --- kids play lesson (simulated transcripts only, no real child voice) ---
+try:
+    import play_modes as _pm
+    @app.route("/api/play_lesson/steps")
+    def play_lesson_steps():
+        return jsonify({"ok": True, "simulated": True, "max_steps": _pm.MAX_STEPS, "steps": [{"mode": s["mode"], "prompt": s["prompt"]} for s in _pm.LESSON_STEPS]})
+    @app.route("/api/play_lesson", methods=["POST"])
+    def play_lesson():
+        d = request.get_json(force=True, silent=True) or {}
+        utts = d.get("utterances") or []
+        if not isinstance(utts, list):
+            return jsonify({"ok": False, "error": "utterances must be list"}), 400
+        r = _pm.run_lesson(utts)
+        return jsonify({"ok": True, "simulated": True, **r})
+except Exception as _e:
+    @app.route("/api/play_lesson")
+    def play_lesson_unavailable():
+        return jsonify({"ok": False, "error": "play_modes unavailable"}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=18080, threaded=True)
