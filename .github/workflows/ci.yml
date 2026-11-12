@@ -1,0 +1,26 @@
+# CI: logic-layer regression tests only.
+# The build job is a placeholder until probes (a)/(b)/(c) settle the
+# Kivy + Buildozer build scheme. pytest on the host interpreter proves
+# the logic layer has not regressed; it does NOT prove in-APK portability.
+#
+# NOTE 2026-11-12: NOT pushed to GitHub yet. The gh token on the hub
+# (bjgt-dev) lacks `workflow` scope, so any commit creating/updating
+# .github/workflows/ci.yml is refused by GitHub. To push it, re-auth
+# gh with workflow scope (gh auth refresh -s workflow), then copy this
+# file to .github/workflows/ci.yml in the repo and push.
+name: CI
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest
+      - run: pytest logic/test_kids4.py -q
